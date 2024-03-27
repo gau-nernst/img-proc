@@ -14,6 +14,7 @@ static uint8_t image_value(const uint8_t *image, int width, int height, int dept
 }
 
 static int round_half_down(double x) { return (int)ceil(x - 0.5); }
+static int round_half_up(double x) { return (int)floor(x + 0.5); }
 
 static void interpolate_nearest(const uint8_t *image, int width, int height, int depth, double x, double y,
                                 uint8_t *output) {
@@ -103,4 +104,44 @@ void image_resize(const uint8_t *image, int width, int height, int depth, int ne
       uint8_t *pixel_output = output + (row * new_width + col) * depth;
       interpolate(image, width, height, depth, x, y, pixel_output, interpolation);
     }
+}
+
+void invert_affine_transform(const double *transform, double *output) {
+  double a = transform[0];
+  double b = transform[1];
+  double c = transform[2];
+  double d = transform[3];
+  double e = transform[4];
+  double f = transform[5];
+
+  double inv_det = 1.0 / (a * e - b * d);
+  output[0] = e * inv_det;
+  output[1] = -b * inv_det;
+  output[3] = -d * inv_det;
+  output[4] = a * inv_det;
+  output[2] = -(output[0] * c + output[1] * f);
+  output[5] = -(output[3] * c + output[4] * f);
+}
+
+void warp_affine(const uint8_t *src, int width, int height, int depth, const double *transform, int new_width,
+                 int new_height, Interpolation interpolation, uint8_t *dst) {
+  double inv_transform[6];
+  invert_affine_transform(transform, inv_transform);
+
+  double a = inv_transform[0];
+  double b = inv_transform[1];
+  double c = inv_transform[2];
+  double d = inv_transform[3];
+  double e = inv_transform[4];
+  double f = inv_transform[5];
+
+  for (int dst_y = 0; dst_y < new_height; dst_y++) {
+    for (int dst_x = 0; dst_x < new_width; dst_x++) {
+      double src_x = a * ((double)dst_x + 0.5) + b * ((double)dst_y + 0.5) + c;
+      double src_y = d * ((double)dst_x + 0.5) + e * ((double)dst_y + 0.5) + f;
+
+      uint8_t *pixel_dst = dst + (dst_y * new_width + dst_x) * depth;
+      interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation);
+    }
+  }
 }
