@@ -24,7 +24,7 @@ void test_interpolate_nearest() {
   CHECK(memcmp(output, expected, 6 * 4) == 0);
 
   image_resize(image, 3, 2, 1, 1, 1, NEAREST, output);
-  CHECK(output[0] == 5);
+  CHECK(output[0] == 2);
 }
 
 void test_interpolate_bilinear() {
@@ -36,12 +36,13 @@ void test_interpolate_bilinear() {
   image_resize(image, 3, 2, 1, 3, 2, BILINEAR, output);
   CHECK(memcmp(output, image, 6) == 0);
 
-  // image_resize(image, 3, 2, 1, 6, 4, BILINEAR, output);
-  // expected = (uint8_t[]){1, 1, 2, 2, 3, 3, //
-  //                        2, 2, 3, 3, 4, 4, //
-  //                        3, 4, 4, 5, 5, 5, //
-  //                        4, 4, 5, 5, 6, 6};
-  // CHECK(memcmp(output, expected, 6 * 4) == 0);
+  // match OpenCV. Pillow makes more sense though.
+  image_resize(image, 3, 2, 1, 6, 4, BILINEAR, output);
+  expected = (uint8_t[]){1, 1, 2, 2, 3, 3, //
+                         2, 2, 3, 3, 4, 4, //
+                         3, 4, 4, 5, 5, 5, //
+                         4, 4, 5, 5, 6, 6};
+  CHECK(memcmp(output, expected, 6 * 4) == 0);
 
   image_resize(image, 3, 2, 1, 1, 1, BILINEAR, output);
   CHECK(output[0] == 4); // (2 + 5) / 2
