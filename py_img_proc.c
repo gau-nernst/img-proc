@@ -47,7 +47,7 @@ static PyObject *py_get_rotation_matrix_2d(PyObject *self, PyObject *args) {
   return Py_None;
 }
 
-static PyObject *py_warp_affine(PyObject *self, PyObject *args) {
+static PyObject *py_image_warp_affine(PyObject *self, PyObject *args) {
   const char * src;
   Py_ssize_t src_size;
   int width;
@@ -64,7 +64,7 @@ static PyObject *py_warp_affine(PyObject *self, PyObject *args) {
     return NULL;
 
   Py_BEGIN_ALLOW_THREADS;
-  warp_affine(src, width, height, depth, transform, new_width, new_height, interpolation, dst.buf);
+  image_warp_affine(src, width, height, depth, transform, new_width, new_height, interpolation, dst.buf);
   Py_END_ALLOW_THREADS;
 
   PyBuffer_Release(&dst);
@@ -76,7 +76,7 @@ static PyObject *py_warp_affine(PyObject *self, PyObject *args) {
 static PyMethodDef ImgProcMethods[] = {
   {"image_resize", py_image_resize, METH_VARARGS, ""},
   {"get_rotation_matrix_2d", py_get_rotation_matrix_2d, METH_VARARGS, ""},
-  {"warp_affine", py_warp_affine, METH_VARARGS, ""},
+  {"image_warp_affine", py_image_warp_affine, METH_VARARGS, ""},
   {NULL, NULL, 0, NULL},
 };
 

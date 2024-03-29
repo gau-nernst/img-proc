@@ -16,16 +16,16 @@ static uint8_t image_value(const uint8_t *image, int width, int height, int dept
 static int round_half_down(double x) { return (int)ceil(x - 0.5); }
 static int round_half_up(double x) { return (int)floor(x + 0.5); }
 
-static void interpolate_nearest(const uint8_t *image, int width, int height, int depth, double x, double y,
-                                uint8_t *output) {
+static void image_interpolate_nearest(const uint8_t *image, int width, int height, int depth, double x, double y,
+                                      uint8_t *output) {
   int col = round_half_down(x - 0.5);
   int row = round_half_down(y - 0.5);
   for (int d = 0; d < depth; d++)
     output[d] = image_value(image, width, height, depth, col, row, d);
 }
 
-static void interpolate_bilinear(const uint8_t *image, int width, int height, int depth, double x, double y,
-                                 uint8_t *output) {
+static void image_interpolate_bilinear(const uint8_t *image, int width, int height, int depth, double x, double y,
+                                       uint8_t *output) {
   x -= 0.5;
   y -= 0.5;
   int col1 = (int)floor(x);
@@ -53,8 +53,8 @@ static double filter_bicubic(double x0, double x1, double x2, double x3, double 
 }
 
 // bicubic spline: derivatives at the corners/boundaries are maintained
-static void interpolate_bicubic(const uint8_t *image, int width, int height, int depth, double x, double y,
-                                uint8_t *output) {
+static void image_interpolate_bicubic(const uint8_t *image, int width, int height, int depth, double x, double y,
+                                      uint8_t *output) {
   x -= 0.5;
   y -= 0.5;
   int cols[4], rows[4];
@@ -80,15 +80,15 @@ static void interpolate_bicubic(const uint8_t *image, int width, int height, int
   }
 }
 
-static void interpolate(const uint8_t *image, int width, int height, int depth, double x, double y, uint8_t *output,
-                        Interpolation interpolation) {
+static void image_interpolate(const uint8_t *image, int width, int height, int depth, double x, double y,
+                              uint8_t *output, Interpolation interpolation) {
   switch (interpolation) {
   case NEAREST:
-    return interpolate_nearest(image, width, height, depth, x, y, output);
+    return image_interpolate_nearest(image, width, height, depth, x, y, output);
   case BILINEAR:
-    return interpolate_bilinear(image, width, height, depth, x, y, output);
+    return image_interpolate_bilinear(image, width, height, depth, x, y, output);
   case BICUBIC:
-    return interpolate_bicubic(image, width, height, depth, x, y, output);
+    return image_interpolate_bicubic(image, width, height, depth, x, y, output);
   }
 }
 
@@ -102,7 +102,7 @@ void image_resize(const uint8_t *image, int width, int height, int depth, int ne
       double x = ((double)col + 0.5) * x_scale;
       double y = ((double)row + 0.5) * y_scale;
       uint8_t *pixel_output = output + (row * new_width + col) * depth;
-      interpolate(image, width, height, depth, x, y, pixel_output, interpolation);
+      image_interpolate(image, width, height, depth, x, y, pixel_output, interpolation);
     }
 }
 
@@ -136,8 +136,8 @@ void get_rotation_matrix_2d(double cx, double cy, double angle, double scale, do
   output[5] = sin_a * cx + (1.0 - cos_a) * cy;
 }
 
-void warp_affine(const uint8_t *src, int width, int height, int depth, const double *transform, int new_width,
-                 int new_height, Interpolation interpolation, uint8_t *dst) {
+void image_warp_affine(const uint8_t *src, int width, int height, int depth, const double *transform, int new_width,
+                       int new_height, Interpolation interpolation, uint8_t *dst) {
   double inv_transform[6];
   invert_affine_transform(transform, inv_transform);
 
@@ -157,7 +157,7 @@ void warp_affine(const uint8_t *src, int width, int height, int depth, const dou
         continue;
 
       uint8_t *pixel_dst = dst + (dst_y * new_width + dst_x) * depth;
-      interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation);
+      image_interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation);
     }
   }
 }
