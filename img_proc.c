@@ -123,6 +123,19 @@ void invert_affine_transform(const double *transform, double *output) {
   output[5] = -(output[3] * c + output[4] * f);
 }
 
+void get_rotation_matrix_2d(double cx, double cy, double angle, double scale, double *output) {
+  angle *= M_PI / 180.0;
+  double cos_a = scale * cos(angle);
+  double sin_a = scale * sin(angle);
+
+  output[0] = cos_a;
+  output[1] = sin_a;
+  output[2] = (1.0 - cos_a) * cx - sin_a * cy;
+  output[3] = -sin_a;
+  output[4] = cos_a;
+  output[5] = sin_a * cx + (1.0 - cos_a) * cy;
+}
+
 void warp_affine(const uint8_t *src, int width, int height, int depth, const double *transform, int new_width,
                  int new_height, Interpolation interpolation, uint8_t *dst) {
   double inv_transform[6];
@@ -139,6 +152,9 @@ void warp_affine(const uint8_t *src, int width, int height, int depth, const dou
     for (int dst_x = 0; dst_x < new_width; dst_x++) {
       double src_x = a * ((double)dst_x + 0.5) + b * ((double)dst_y + 0.5) + c;
       double src_y = d * ((double)dst_x + 0.5) + e * ((double)dst_y + 0.5) + f;
+
+      if (src_x < 0.0 || src_x > (double)width || src_y < 0.0 || src_y > (double)height)
+        continue;
 
       uint8_t *pixel_dst = dst + (dst_y * new_width + dst_x) * depth;
       interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation);
