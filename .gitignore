@@ -1,2 +1,4 @@
 *.jpg
 stb_*
+build/
+*.so
