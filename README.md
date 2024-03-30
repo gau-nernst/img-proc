@@ -1,5 +1,7 @@
 # Image processing
 
+[![Build](https://github.com/gau-nernst/img-proc/actions/workflows/build.yaml/badge.svg)](https://github.com/gau-nernst/img-proc/actions/workflows/build.yaml)
+
 TODO:
 
 - [ ] Image resampling:
