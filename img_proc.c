@@ -120,20 +120,20 @@ void get_rotation_matrix_2d(double cx, double cy, double angle, double scale, do
 }
 
 void invert_affine_transform(const double *m, double *m_inv) {
-  double a = m[0];
-  double b = m[1];
-  double c = m[2];
-  double d = m[3];
-  double e = m[4];
-  double f = m[5];
+  double m00 = m[0];
+  double m01 = m[1];
+  double m02 = m[2];
+  double m10 = m[3];
+  double m11 = m[4];
+  double m12 = m[5];
 
-  double inv_det = 1.0 / (a * e - b * d);
-  m_inv[0] = e * inv_det;
-  m_inv[1] = -b * inv_det;
-  m_inv[3] = -d * inv_det;
-  m_inv[4] = a * inv_det;
-  m_inv[2] = -(m_inv[0] * c + m_inv[1] * f);
-  m_inv[5] = -(m_inv[3] * c + m_inv[4] * f);
+  double inv_det = 1.0 / (m00 * m11 - m01 * m10);
+  m_inv[0] = m11 * inv_det;
+  m_inv[1] = -m01 * inv_det;
+  m_inv[3] = -m10 * inv_det;
+  m_inv[4] = m00 * inv_det;
+  m_inv[2] = -(m_inv[0] * m02 + m_inv[1] * m12);
+  m_inv[5] = -(m_inv[3] * m02 + m_inv[4] * m12);
 }
 
 void image_warp_affine(const uint8_t *src, int width, int height, int depth, const double *transform, int new_width,
@@ -179,13 +179,13 @@ void invert_matrix_3x3(const double *m, double *m_inv) {
   double inv_det = 1.0 / det;
 
   m_inv[0] = (m11 * m22 - m12 * m21) * inv_det;
-  m_inv[3] = -(m10 * m22 - m12 * m20) * inv_det;
-  m_inv[6] = (m10 * m21 - m11 * m20) * inv_det;
   m_inv[1] = -(m01 * m22 - m02 * m21) * inv_det;
-  m_inv[4] = (m00 * m22 - m02 * m20) * inv_det;
-  m_inv[7] = -(m00 * m21 - m01 * m20) * inv_det;
   m_inv[2] = (m01 * m12 - m02 * m11) * inv_det;
+  m_inv[3] = -(m10 * m22 - m12 * m20) * inv_det;
+  m_inv[4] = (m00 * m22 - m02 * m20) * inv_det;
   m_inv[5] = -(m00 * m12 - m02 * m10) * inv_det;
+  m_inv[6] = (m10 * m21 - m11 * m20) * inv_det;
+  m_inv[7] = -(m00 * m21 - m01 * m20) * inv_det;
   m_inv[8] = (m00 * m11 - m01 * m10) * inv_det;
 }
 
