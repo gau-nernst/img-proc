@@ -5,8 +5,9 @@ TODO:
 - [ ] Image resampling:
     - [x] Interpolation: nearest ✅, bilinear ✅, bicubic ✅
     - [ ] Convolution-based (like pillow)
-- [x] Affine transform ✅
-- [ ] Perspective transform
+- [ ] Geometric transform:
+    - [x] Affine transform ✅, Perspective transform ✅
+    - [ ] Handle border correctly to not cause jagged edges
 - [ ] Estimate affine transform: full, partial (scale, rotation, and translation only)
 
 Resources:

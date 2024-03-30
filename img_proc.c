@@ -106,23 +106,6 @@ void image_resize(const uint8_t *image, int width, int height, int depth, int ne
     }
 }
 
-void invert_affine_transform(const double *transform, double *output) {
-  double a = transform[0];
-  double b = transform[1];
-  double c = transform[2];
-  double d = transform[3];
-  double e = transform[4];
-  double f = transform[5];
-
-  double inv_det = 1.0 / (a * e - b * d);
-  output[0] = e * inv_det;
-  output[1] = -b * inv_det;
-  output[3] = -d * inv_det;
-  output[4] = a * inv_det;
-  output[2] = -(output[0] * c + output[1] * f);
-  output[5] = -(output[3] * c + output[4] * f);
-}
-
 void get_rotation_matrix_2d(double cx, double cy, double angle, double scale, double *output) {
   angle *= M_PI / 180.0;
   double cos_a = scale * cos(angle);
@@ -136,22 +119,96 @@ void get_rotation_matrix_2d(double cx, double cy, double angle, double scale, do
   output[5] = sin_a * cx + (1.0 - cos_a) * cy;
 }
 
+void invert_affine_transform(const double *m, double *m_inv) {
+  double a = m[0];
+  double b = m[1];
+  double c = m[2];
+  double d = m[3];
+  double e = m[4];
+  double f = m[5];
+
+  double inv_det = 1.0 / (a * e - b * d);
+  m_inv[0] = e * inv_det;
+  m_inv[1] = -b * inv_det;
+  m_inv[3] = -d * inv_det;
+  m_inv[4] = a * inv_det;
+  m_inv[2] = -(m_inv[0] * c + m_inv[1] * f);
+  m_inv[5] = -(m_inv[3] * c + m_inv[4] * f);
+}
+
 void image_warp_affine(const uint8_t *src, int width, int height, int depth, const double *transform, int new_width,
                        int new_height, Interpolation interpolation, uint8_t *dst) {
   double inv_transform[6];
   invert_affine_transform(transform, inv_transform);
 
-  double a = inv_transform[0];
-  double b = inv_transform[1];
-  double c = inv_transform[2];
-  double d = inv_transform[3];
-  double e = inv_transform[4];
-  double f = inv_transform[5];
+  double m00 = inv_transform[0];
+  double m01 = inv_transform[1];
+  double m02 = inv_transform[2];
+  double m10 = inv_transform[3];
+  double m11 = inv_transform[4];
+  double m12 = inv_transform[5];
 
   for (int dst_y = 0; dst_y < new_height; dst_y++) {
     for (int dst_x = 0; dst_x < new_width; dst_x++) {
-      double src_x = a * ((double)dst_x + 0.5) + b * ((double)dst_y + 0.5) + c;
-      double src_y = d * ((double)dst_x + 0.5) + e * ((double)dst_y + 0.5) + f;
+      double src_x = m00 * ((double)dst_x + 0.5) + m01 * ((double)dst_y + 0.5) + m02;
+      double src_y = m10 * ((double)dst_x + 0.5) + m11 * ((double)dst_y + 0.5) + m12;
+
+      if (src_x < 0.0 || src_x > (double)width || src_y < 0.0 || src_y > (double)height)
+        continue;
+
+      uint8_t *pixel_dst = dst + (dst_y * new_width + dst_x) * depth;
+      image_interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation);
+    }
+  }
+}
+
+void invert_matrix_3x3(const double *m, double *m_inv) {
+  double m00 = m[0];
+  double m01 = m[1];
+  double m02 = m[2];
+  double m10 = m[3];
+  double m11 = m[4];
+  double m12 = m[5];
+  double m20 = m[6];
+  double m21 = m[7];
+  double m22 = m[8];
+
+  double det = m00 * (m11 * m22 - m12 * m21)   //
+               - m01 * (m10 * m22 - m12 * m20) //
+               + m02 * (m10 * m21 - m11 * m20);
+  double inv_det = 1.0 / det;
+
+  m_inv[0] = (m11 * m22 - m12 * m21) * inv_det;
+  m_inv[3] = -(m10 * m22 - m12 * m20) * inv_det;
+  m_inv[6] = (m10 * m21 - m11 * m20) * inv_det;
+  m_inv[1] = -(m01 * m22 - m02 * m21) * inv_det;
+  m_inv[4] = (m00 * m22 - m02 * m20) * inv_det;
+  m_inv[7] = -(m00 * m21 - m01 * m20) * inv_det;
+  m_inv[2] = (m01 * m12 - m02 * m11) * inv_det;
+  m_inv[5] = -(m00 * m12 - m02 * m10) * inv_det;
+  m_inv[8] = (m00 * m11 - m01 * m10) * inv_det;
+}
+
+void image_warp_perspective(const uint8_t *src, int width, int height, int depth, const double *transform,
+                            int new_width, int new_height, Interpolation interpolation, uint8_t *dst) {
+  double inv_transform[9];
+  invert_matrix_3x3(transform, inv_transform);
+
+  double m00 = inv_transform[0];
+  double m01 = inv_transform[1];
+  double m02 = inv_transform[2];
+  double m10 = inv_transform[3];
+  double m11 = inv_transform[4];
+  double m12 = inv_transform[5];
+  double m20 = inv_transform[6];
+  double m21 = inv_transform[7];
+  double m22 = inv_transform[8];
+
+  for (int dst_y = 0; dst_y < new_height; dst_y++) {
+    for (int dst_x = 0; dst_x < new_width; dst_x++) {
+      double scale = 1.0 / (m20 * ((double)dst_x + 0.5) + m21 * ((double)dst_y + 0.5) + m22);
+      double src_x = scale * (m00 * ((double)dst_x + 0.5) + m01 * ((double)dst_y + 0.5) + m02);
+      double src_y = scale * (m10 * ((double)dst_x + 0.5) + m11 * ((double)dst_y + 0.5) + m12);
 
       if (src_x < 0.0 || src_x > (double)width || src_y < 0.0 || src_y > (double)height)
         continue;
