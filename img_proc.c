@@ -1,6 +1,10 @@
 #include "img_proc.h"
 #include <math.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define CLAMP(x, low, high) MIN(MAX((x), (low)), (high))
