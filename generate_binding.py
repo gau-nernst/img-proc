@@ -1,7 +1,5 @@
 import re
 
-KNOWN_ENUM_TYPES = ("Interpolation",)
-
 
 def parse_argument(arg_str: str):
     arg_type, arg_name = re.match(r"([\w\s]+\s+\*{0,})\s{0,}(\w+)$", arg_str).groups()
@@ -10,28 +8,40 @@ def parse_argument(arg_str: str):
 
 def parse_header_file(filename):
     funcs = []
+    enums = dict()
     func_str = ""
+    enum_str = ""
 
     with open(filename) as f:
         for line in f:
             line = line.strip()
 
+            if enum_str or line.startswith("typedef enum"):
+                enum_str += line
+
+                if enum_str.endswith(";"):
+                    re_match = re.match(r"typedef enum (\w+) \{(.+)\} (\w+);", enum_str)
+                    assert re_match.group(1) == re_match.group(3)
+                    enum_vals = [x.strip() for x in re_match.group(2).split(",")]
+
+                    enums[re_match.group(3)] = enum_vals
+                    enum_str = ""
+
             # only support void return type
-            if func_str or line.startswith("void"):
+            elif func_str or line.startswith("void"):
                 func_str += line
 
                 if func_str.endswith(";"):
-                    re_match = re.search(r"void ([\w_]+)\((.+)\);", func_str)
-                    func_name = re_match.group(1)
+                    re_match = re.match(r"void ([\w_]+)\((.+)\);", func_str)
                     func_args = [parse_argument(x) for x in re_match.group(2).split(",")]
 
-                    funcs.append((func_name, func_args))
+                    funcs.append((re_match.group(1), func_args))
                     func_str = ""
 
-    return funcs
+    return funcs, enums
 
 
-def generate_py_func(func_name: str, func_args: list[tuple[str, str]]):
+def generate_py_func(func_name: str, func_args: list[tuple[str, str]], enums: dict[str, list[str]]):
     arg_pattern_lookup = {
         "const char *": "y#",
         "char *": "y*",
@@ -45,7 +55,7 @@ def generate_py_func(func_name: str, func_args: list[tuple[str, str]]):
     arg_parse_pattern = ""
 
     for arg_type, arg_name in func_args:
-        if arg_type in KNOWN_ENUM_TYPES:
+        if arg_type in enums:
             arg_type = "int"
 
         # read-only buffer
@@ -97,7 +107,7 @@ def generate_py_func(func_name: str, func_args: list[tuple[str, str]]):
 
 
 def generate_extension_source(header_file):
-    funcs = parse_header_file(header_file)
+    funcs, enums = parse_header_file(header_file)
 
     lines = [
         '#include "img_proc.h"',
@@ -107,7 +117,7 @@ def generate_extension_source(header_file):
     ]
 
     for func_name, func_args in funcs:
-        lines.extend(generate_py_func(func_name, func_args))
+        lines.extend(generate_py_func(func_name, func_args, enums))
         lines.append("")
 
     lines.append("static PyMethodDef ImgProcMethods[] = {")
