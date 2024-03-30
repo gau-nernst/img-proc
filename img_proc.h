@@ -15,3 +15,6 @@ void image_warp_affine(const uint8_t *src, int width, int height, int depth, con
 void invert_matrix_3x3(const double *m, double *m_inv);
 void image_warp_perspective(const uint8_t *src, int width, int height, int depth, const double *transform,
                             int new_width, int new_height, Interpolation interpolation, uint8_t *dst);
+
+// only supports odd kernel size
+void image_box_filter(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output);

@@ -218,3 +218,33 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
     }
   }
 }
+
+void image_box_filter(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output) {
+  int rw = kw / 2;
+  int rh = kh / 2;
+
+  // implementations:
+  // - naive                             O(width x height x kw x kh) -> no extra memory
+  // - integral image                    O(width x height)           -> will overflow, extra memory (height x width x depth)
+  // - separable conv                    O(width x kw + height x kh) -> extra memory (kh x width x depth)
+  // - separable + online moving average O(width x height)           -> extra memory (kh x width x depth)
+  for (int dst_row = 0; dst_row < height; dst_row++) {
+    for (int dst_col = 0; dst_col < width; dst_col++) {
+      for (int d = 0; d < depth; d++) {
+        // border handling: normalize over visible area only
+        int value = 0;
+        int count = 0;
+
+        for (int src_row = MAX(dst_row - rh, 0); src_row < MIN(dst_row + rh + 1, height - 1); src_row++) {
+          for (int src_col = MAX(dst_col - rw, 0); src_col < MIN(dst_col + rw + 1, width - 1); src_col++) {
+            count += 1;
+            value += image[(src_row * width + src_col) * depth + d];
+          }
+        }
+
+        double value_f64 = (double)value / (double)count;
+        output[(dst_row * width + dst_col) * depth + d] = (uint8_t)value_f64;
+      }
+    }
+  }
+}
