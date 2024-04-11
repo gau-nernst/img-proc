@@ -9,27 +9,34 @@
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define CLAMP(x, low, high) MIN(MAX((x), (low)), (high))
 
-// there are different ways to handle out-of-bound values
-static uint8_t image_value(const uint8_t *image, int width, int height, int depth, int col, int row, int d) {
-  // return zero
-  // return 0 <= col && col < width && 0 <= row && row < height ? image[(row * width + col) * depth + d] : 0;
-  // clamp to border
-  return image[(CLAMP(row, 0, height - 1) * width + CLAMP(col, 0, width - 1)) * depth + d];
+typedef enum BorderMode {
+  BORDER_ZERO,
+  BORDER_CLAMP,
+} BorderMode;
+
+static uint8_t image_value(const uint8_t *image, int width, int height, int depth, int col, int row, int d,
+                           BorderMode mode) {
+  switch (mode) {
+  case BORDER_ZERO:
+    return 0 <= col && col < width && 0 <= row && row < height ? image[(row * width + col) * depth + d] : 0;
+  case BORDER_CLAMP:
+    return image[(CLAMP(row, 0, height - 1) * width + CLAMP(col, 0, width - 1)) * depth + d];
+  }
 }
 
 static int round_half_down(double x) { return (int)ceil(x - 0.5); }
 static int round_half_up(double x) { return (int)floor(x + 0.5); }
 
 static void image_interpolate_nearest(const uint8_t *image, int width, int height, int depth, double x, double y,
-                                      uint8_t *output) {
+                                      uint8_t *output, BorderMode mode) {
   int col = round_half_down(x - 0.5);
   int row = round_half_down(y - 0.5);
   for (int d = 0; d < depth; d++)
-    output[d] = image_value(image, width, height, depth, col, row, d);
+    output[d] = image_value(image, width, height, depth, col, row, d, mode);
 }
 
 static void image_interpolate_bilinear(const uint8_t *image, int width, int height, int depth, double x, double y,
-                                       uint8_t *output) {
+                                       uint8_t *output, BorderMode mode) {
   x -= 0.5;
   y -= 0.5;
   int col1 = (int)floor(x);
@@ -41,10 +48,10 @@ static void image_interpolate_bilinear(const uint8_t *image, int width, int heig
   double dy = y - floor(y);
 
   for (int d = 0; d < depth; d++) {
-    double p1 = (double)image_value(image, width, height, depth, col1, row1, d);
-    double p2 = (double)image_value(image, width, height, depth, col2, row1, d);
-    double p3 = (double)image_value(image, width, height, depth, col1, row2, d);
-    double p4 = (double)image_value(image, width, height, depth, col2, row2, d);
+    double p1 = (double)image_value(image, width, height, depth, col1, row1, d, mode);
+    double p2 = (double)image_value(image, width, height, depth, col2, row1, d, mode);
+    double p3 = (double)image_value(image, width, height, depth, col1, row2, d, mode);
+    double p4 = (double)image_value(image, width, height, depth, col2, row2, d, mode);
 
     double p = p1 * (1.0 - dx) * (1.0 - dy) + p2 * dx * (1.0 - dy) + p3 * (1.0 - dx) * dy + p4 * dx * dy;
     output[d] = (uint8_t)round(p);
@@ -58,7 +65,7 @@ static double filter_bicubic(double x0, double x1, double x2, double x3, double 
 
 // bicubic spline: derivatives at the corners/boundaries are maintained
 static void image_interpolate_bicubic(const uint8_t *image, int width, int height, int depth, double x, double y,
-                                      uint8_t *output) {
+                                      uint8_t *output, BorderMode mode) {
   x -= 0.5;
   y -= 0.5;
   int cols[4], rows[4];
@@ -73,11 +80,10 @@ static void image_interpolate_bicubic(const uint8_t *image, int width, int heigh
   double ys[4];
   for (int d = 0; d < depth; d++) {
     for (int j = 0; j < 4; j++) {
-      double x0 = (double)image_value(image, width, height, depth, cols[0], rows[j], d);
-      double x1 = (double)image_value(image, width, height, depth, cols[1], rows[j], d);
-      double x2 = (double)image_value(image, width, height, depth, cols[2], rows[j], d);
-      double x3 = (double)image_value(image, width, height, depth, cols[3], rows[j], d);
-      ys[j] = filter_bicubic(x0, x1, x2, x3, dx);
+      double xs[4];
+      for (int i = 0; i < 4; i++)
+        xs[i] = (double)image_value(image, width, height, depth, cols[i], rows[j], d, mode);
+      ys[j] = filter_bicubic(xs[0], xs[1], xs[2], xs[3], dx);
     }
     double out = filter_bicubic(ys[0], ys[1], ys[2], ys[3], dy);
     output[d] = (uint8_t)CLAMP(out, 0.0, 255.0);
@@ -85,14 +91,14 @@ static void image_interpolate_bicubic(const uint8_t *image, int width, int heigh
 }
 
 static void image_interpolate(const uint8_t *image, int width, int height, int depth, double x, double y,
-                              uint8_t *output, Interpolation interpolation) {
+                              uint8_t *output, Interpolation interpolation, BorderMode mode) {
   switch (interpolation) {
   case NEAREST:
-    return image_interpolate_nearest(image, width, height, depth, x, y, output);
+    return image_interpolate_nearest(image, width, height, depth, x, y, output, mode);
   case BILINEAR:
-    return image_interpolate_bilinear(image, width, height, depth, x, y, output);
+    return image_interpolate_bilinear(image, width, height, depth, x, y, output, mode);
   case BICUBIC:
-    return image_interpolate_bicubic(image, width, height, depth, x, y, output);
+    return image_interpolate_bicubic(image, width, height, depth, x, y, output, mode);
   }
 }
 
@@ -106,7 +112,7 @@ void image_resize(const uint8_t *image, int width, int height, int depth, int ne
       double x = ((double)col + 0.5) * x_scale;
       double y = ((double)row + 0.5) * y_scale;
       uint8_t *pixel_output = output + (row * new_width + col) * depth;
-      image_interpolate(image, width, height, depth, x, y, pixel_output, interpolation);
+      image_interpolate(image, width, height, depth, x, y, pixel_output, interpolation, BORDER_CLAMP);
     }
 }
 
@@ -157,11 +163,8 @@ void image_warp_affine(const uint8_t *src, int width, int height, int depth, con
       double src_x = m00 * ((double)dst_x + 0.5) + m01 * ((double)dst_y + 0.5) + m02;
       double src_y = m10 * ((double)dst_x + 0.5) + m11 * ((double)dst_y + 0.5) + m12;
 
-      if (src_x < 0.0 || src_x > (double)width || src_y < 0.0 || src_y > (double)height)
-        continue;
-
       uint8_t *pixel_dst = dst + (dst_y * new_width + dst_x) * depth;
-      image_interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation);
+      image_interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation, BORDER_ZERO);
     }
   }
 }
@@ -214,11 +217,8 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
       double src_x = scale * (m00 * ((double)dst_x + 0.5) + m01 * ((double)dst_y + 0.5) + m02);
       double src_y = scale * (m10 * ((double)dst_x + 0.5) + m11 * ((double)dst_y + 0.5) + m12);
 
-      if (src_x < 0.0 || src_x > (double)width || src_y < 0.0 || src_y > (double)height)
-        continue;
-
       uint8_t *pixel_dst = dst + (dst_y * new_width + dst_x) * depth;
-      image_interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation);
+      image_interpolate(src, width, height, depth, src_x, src_y, pixel_dst, interpolation, BORDER_ZERO);
     }
   }
 }

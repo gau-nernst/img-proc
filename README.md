@@ -9,7 +9,7 @@ TODO:
     - [ ] Convolution-based (like pillow)
 - [ ] Geometric transform:
     - [x] Affine transform ✅, Perspective transform ✅
-    - [ ] Handle border correctly to not cause jagged edges
+    - [x] Handle border correctly to not cause jagged edges ✅
     - [ ] Estimate affine transform: full, partial (scale, rotation, and translation only)
     - [ ] Estimate perspective transform: exact from 4 pairs of points (`cv.getPerspectiveTransform`)
 - [ ] Filters:
