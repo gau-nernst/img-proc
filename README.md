@@ -13,7 +13,7 @@ TODO:
     - [ ] Estimate affine transform: full, partial (scale, rotation, and translation only)
     - [ ] Estimate perspective transform: exact from 4 pairs of points (`cv.getPerspectiveTransform`)
 - [ ] Filters:
-    - [ ] Basic: box, Gaussian, median
+    - [ ] Basic: box ✅, Gaussian, median
     - [ ] Edge preserving: bilateral, guided
 - [ ] Image decoders:
     - [ ] JPEG (migrate from https://github.com/gau-nernst/jpeg.c)
