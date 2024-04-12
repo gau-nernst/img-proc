@@ -234,19 +234,20 @@ void image_box_filter_naive(const uint8_t *image, int width, int height, int dep
   // - separable conv                    O(width x kw + height x kh) -> extra memory (kh x width x depth)
   // - separable + online moving average O(width x height)           -> extra memory (kh x width x depth)
   for (int dst_row = 0; dst_row < height; dst_row++) {
-    for (int dst_col = 0; dst_col < width; dst_col++) {
-      for (int d = 0; d < depth; d++) {
-        // border handling: normalize over visible area only
-        int row_start = MAX(dst_row - rh, 0);
-        int row_end = MIN(dst_row + rh + 1, height);
-        int col_start = MAX(dst_col - rw, 0);
-        int col_end = MIN(dst_col + rw + 1, width);
+    int row_start = MAX(dst_row - rh, 0);
+    int row_end = MIN(dst_row + rh + 1, height);
 
+    for (int dst_col = 0; dst_col < width; dst_col++) {
+      int col_start = MAX(dst_col - rw, 0);
+      int col_end = MIN(dst_col + rw + 1, width);
+
+      for (int d = 0; d < depth; d++) {
         int value = 0;
         for (int src_row = row_start; src_row < row_end; src_row++)
           for (int src_col = col_start; src_col < col_end; src_col++)
             value += image[(src_row * width + src_col) * depth + d];
 
+        // border handling: normalize over visible area only (like Pillow)
         int count = (row_end - row_start) * (col_end - col_start);
         double value_f64 = (double)value / (double)count;
         output[(dst_row * width + dst_col) * depth + d] = (uint8_t)round(value_f64);
@@ -268,11 +269,10 @@ void image_box_filter_separable(const uint8_t *image, int width, int height, int
   // per row
   for (int row = 0; row < height; row++) {
     for (int dst_col = 0; dst_col < width; dst_col++) {
-      for (int d = 0; d < depth; d++) {
-        // border handling: normalize over visible area only
-        int col_start = MAX(dst_col - rw, 0);
-        int col_end = MIN(dst_col + rw + 1, width);
+      int col_start = MAX(dst_col - rw, 0);
+      int col_end = MIN(dst_col + rw + 1, width);
 
+      for (int d = 0; d < depth; d++) {
         int value = 0;
         for (int src_col = col_start; src_col < col_end; src_col++)
           value += image[(row * width + src_col) * depth + d];
@@ -287,11 +287,10 @@ void image_box_filter_separable(const uint8_t *image, int width, int height, int
   // per column
   for (int col = 0; col < width; col++) {
     for (int dst_row = 0; dst_row < height; dst_row++) {
-      for (int d = 0; d < depth; d++) {
-        // border handling: normalize over visible area only
-        int row_start = MAX(dst_row - rh, 0);
-        int row_end = MIN(dst_row + rh + 1, height);
+      int row_start = MAX(dst_row - rh, 0);
+      int row_end = MIN(dst_row + rh + 1, height);
 
+      for (int d = 0; d < depth; d++) {
         double value = 0;
         for (int src_row = row_start; src_row < row_end; src_row++)
           value += temp[(src_row * width + col) * depth + d];
