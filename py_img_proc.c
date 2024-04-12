@@ -135,7 +135,7 @@ static PyObject *py_image_warp_perspective(PyObject *self, PyObject *args) {
   return Py_None;
 }
 
-static PyObject *py_image_box_filter_naive(PyObject *self, PyObject *args) {
+static PyObject *py_image_box_filter(PyObject *self, PyObject *args) {
   const char * image;
   Py_ssize_t image_size;
   int width;
@@ -144,58 +144,13 @@ static PyObject *py_image_box_filter_naive(PyObject *self, PyObject *args) {
   int kw;
   int kh;
   Py_buffer output;
+  int impl;
 
-  if (!PyArg_ParseTuple(args, "y#iiiiiy*", &image, &image_size, &width, &height, &depth, &kw, &kh, &output))
+  if (!PyArg_ParseTuple(args, "y#iiiiiy*i", &image, &image_size, &width, &height, &depth, &kw, &kh, &output, &impl))
     return NULL;
 
   Py_BEGIN_ALLOW_THREADS;
-  image_box_filter_naive(image, width, height, depth, kw, kh, output.buf);
-  Py_END_ALLOW_THREADS;
-
-  PyBuffer_Release(&output);
-
-  Py_INCREF(Py_None);
-  return Py_None;
-}
-
-static PyObject *py_image_box_filter_separable(PyObject *self, PyObject *args) {
-  const char * image;
-  Py_ssize_t image_size;
-  int width;
-  int height;
-  int depth;
-  int kw;
-  int kh;
-  Py_buffer output;
-
-  if (!PyArg_ParseTuple(args, "y#iiiiiy*", &image, &image_size, &width, &height, &depth, &kw, &kh, &output))
-    return NULL;
-
-  Py_BEGIN_ALLOW_THREADS;
-  image_box_filter_separable(image, width, height, depth, kw, kh, output.buf);
-  Py_END_ALLOW_THREADS;
-
-  PyBuffer_Release(&output);
-
-  Py_INCREF(Py_None);
-  return Py_None;
-}
-
-static PyObject *py_image_box_filter_separable_ma(PyObject *self, PyObject *args) {
-  const char * image;
-  Py_ssize_t image_size;
-  int width;
-  int height;
-  int depth;
-  int kw;
-  int kh;
-  Py_buffer output;
-
-  if (!PyArg_ParseTuple(args, "y#iiiiiy*", &image, &image_size, &width, &height, &depth, &kw, &kh, &output))
-    return NULL;
-
-  Py_BEGIN_ALLOW_THREADS;
-  image_box_filter_separable_ma(image, width, height, depth, kw, kh, output.buf);
+  image_box_filter(image, width, height, depth, kw, kh, output.buf, impl);
   Py_END_ALLOW_THREADS;
 
   PyBuffer_Release(&output);
@@ -211,9 +166,7 @@ static PyMethodDef ImgProcMethods[] = {
   {"image_warp_affine", py_image_warp_affine, METH_VARARGS, ""},
   {"invert_matrix_3x3", py_invert_matrix_3x3, METH_VARARGS, ""},
   {"image_warp_perspective", py_image_warp_perspective, METH_VARARGS, ""},
-  {"image_box_filter_naive", py_image_box_filter_naive, METH_VARARGS, ""},
-  {"image_box_filter_separable", py_image_box_filter_separable, METH_VARARGS, ""},
-  {"image_box_filter_separable_ma", py_image_box_filter_separable_ma, METH_VARARGS, ""},
+  {"image_box_filter", py_image_box_filter, METH_VARARGS, ""},
   {NULL, NULL, 0, NULL},
 };
 

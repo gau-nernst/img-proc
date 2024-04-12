@@ -225,7 +225,8 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
 }
 
 // each output element reads kw x kh block of input and average the values independently
-void image_box_filter_naive(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output) {
+static void image_box_filter_naive(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                   uint8_t *output) {
   int rw = kw / 2;
   int rh = kh / 2;
 
@@ -253,8 +254,8 @@ void image_box_filter_naive(const uint8_t *image, int width, int height, int dep
 }
 
 // 1D box filter in each direction
-void image_box_filter_separable(const uint8_t *image, int width, int height, int depth, int kw, int kh,
-                                uint8_t *output) {
+static void image_box_filter_separable(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                       uint8_t *output) {
   int rw = kw / 2;
   int rh = kh / 2;
 
@@ -303,8 +304,8 @@ void image_box_filter_separable(const uint8_t *image, int width, int height, int
 }
 
 // use online moving average algorithm
-void image_box_filter_separable_ma(const uint8_t *image, int width, int height, int depth, int kw, int kh,
-                                   uint8_t *output) {
+static void image_box_filter_separable_ma(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                          uint8_t *output) {
   int rw = kw / 2;
   int rh = kh / 2;
 
@@ -315,7 +316,7 @@ void image_box_filter_separable_ma(const uint8_t *image, int width, int height, 
 
   // per row
   // NOTE: might not work when kw > width
-  // NOTE: d is not the innermost loop -> strided memory access
+  // NOTE: d is not the innermost loop -> strided memory access -> tiling
   for (int row = 0; row < height; row++) {
     for (int d = 0; d < depth; d++) {
       // initialize with sum from [0, rw-1] inclusive
@@ -369,4 +370,16 @@ void image_box_filter_separable_ma(const uint8_t *image, int width, int height, 
   }
 
   free(temp);
+}
+
+void image_box_filter(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output,
+                      int impl) {
+  switch (impl) {
+  case 0:
+    return image_box_filter_naive(image, width, height, depth, kw, kh, output);
+  case 1:
+    return image_box_filter_separable(image, width, height, depth, kw, kh, output);
+  case 2:
+    return image_box_filter_separable_ma(image, width, height, depth, kw, kh, output);
+  }
 }
