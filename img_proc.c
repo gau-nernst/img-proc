@@ -239,15 +239,14 @@ static void image_box_filter_naive(const uint8_t *image, int width, int height, 
       int col_end = MIN(dst_col + rw + 1, width);
 
       for (int d = 0; d < depth; d++) {
-        int value = 0;
+        int sum = 0;
         for (int src_row = row_start; src_row < row_end; src_row++)
           for (int src_col = col_start; src_col < col_end; src_col++)
-            value += image[(src_row * width + src_col) * depth + d];
+            sum += image[(src_row * width + src_col) * depth + d];
 
         // border handling: normalize over visible area only (like Pillow)
         int count = (row_end - row_start) * (col_end - col_start);
-        double value_f64 = (double)value / (double)count;
-        output[(dst_row * width + dst_col) * depth + d] = (uint8_t)round(value_f64);
+        output[(dst_row * width + dst_col) * depth + d] = (sum + count / 2) / count;
       }
     }
   }
