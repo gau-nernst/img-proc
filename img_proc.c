@@ -1,5 +1,6 @@
 #include "img_proc.h"
 #include <math.h>
+#include <stdlib.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -223,7 +224,7 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
   }
 }
 
-void image_box_filter(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output) {
+void image_box_filter_naive(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output) {
   int rw = kw / 2;
   int rh = kh / 2;
 
@@ -239,16 +240,67 @@ void image_box_filter(const uint8_t *image, int width, int height, int depth, in
         int value = 0;
         int count = 0;
 
-        for (int src_row = MAX(dst_row - rh, 0); src_row < MIN(dst_row + rh + 1, height - 1); src_row++) {
-          for (int src_col = MAX(dst_col - rw, 0); src_col < MIN(dst_col + rw + 1, width - 1); src_col++) {
+        for (int src_row = MAX(dst_row - rh, 0); src_row < MIN(dst_row + rh + 1, height); src_row++) {
+          for (int src_col = MAX(dst_col - rw, 0); src_col < MIN(dst_col + rw + 1, width); src_col++) {
             count += 1;
             value += image[(src_row * width + src_col) * depth + d];
           }
         }
 
         double value_f64 = (double)value / (double)count;
-        output[(dst_row * width + dst_col) * depth + d] = (uint8_t)value_f64;
+        output[(dst_row * width + dst_col) * depth + d] = (uint8_t)round(value_f64);
       }
     }
   }
+}
+
+void image_box_filter_separable(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                uint8_t *output) {
+  int rw = kw / 2;
+  int rh = kh / 2;
+
+  // store temp in double-precision -> better accuracy, but more memory usage
+  double *temp = malloc(width * height * depth * sizeof(double));
+  if (temp == NULL)
+    return;
+
+  // per row
+  for (int row = 0; row < height; row++) {
+    for (int dst_col = 0; dst_col < width; dst_col++) {
+      for (int d = 0; d < depth; d++) {
+        // border handling: normalize over visible area only
+        int value = 0;
+        int count = 0;
+
+        for (int src_col = MAX(dst_col - rw, 0); src_col < MIN(dst_col + rw + 1, width); src_col++) {
+          count += 1;
+          value += image[(row * width + src_col) * depth + d];
+        }
+
+        double value_f64 = (double)value / (double)count;
+        temp[(row * width + dst_col) * depth + d] = value_f64;
+      }
+    }
+  }
+
+  // per column
+  for (int col = 0; col < width; col++) {
+    for (int dst_row = 0; dst_row < height; dst_row++) {
+      for (int d = 0; d < depth; d++) {
+        // border handling: normalize over visible area only
+        double value = 0;
+        int count = 0;
+
+        for (int src_row = MAX(dst_row - rh, 0); src_row < MIN(dst_row + rh + 1, height); src_row++) {
+          count += 1;
+          value += temp[(src_row * width + col) * depth + d];
+        }
+
+        double value_f64 = value / (double)count;
+        output[(dst_row * width + col) * depth + d] = (uint8_t)round(value_f64);
+      }
+    }
+  }
+
+  free(temp);
 }

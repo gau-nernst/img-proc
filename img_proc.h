@@ -17,4 +17,6 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
                             int new_width, int new_height, Interpolation interpolation, uint8_t *dst);
 
 // only supports odd kernel size
-void image_box_filter(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output);
+void image_box_filter_naive(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output);
+void image_box_filter_separable(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                uint8_t *output);
