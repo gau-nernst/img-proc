@@ -181,6 +181,29 @@ static PyObject *py_image_box_filter_separable(PyObject *self, PyObject *args) {
   return Py_None;
 }
 
+static PyObject *py_image_box_filter_separable_ma(PyObject *self, PyObject *args) {
+  const char * image;
+  Py_ssize_t image_size;
+  int width;
+  int height;
+  int depth;
+  int kw;
+  int kh;
+  Py_buffer output;
+
+  if (!PyArg_ParseTuple(args, "y#iiiiiy*", &image, &image_size, &width, &height, &depth, &kw, &kh, &output))
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS;
+  image_box_filter_separable_ma(image, width, height, depth, kw, kh, output.buf);
+  Py_END_ALLOW_THREADS;
+
+  PyBuffer_Release(&output);
+
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
 static PyMethodDef ImgProcMethods[] = {
   {"image_resize", py_image_resize, METH_VARARGS, ""},
   {"get_rotation_matrix_2d", py_get_rotation_matrix_2d, METH_VARARGS, ""},
@@ -190,6 +213,7 @@ static PyMethodDef ImgProcMethods[] = {
   {"image_warp_perspective", py_image_warp_perspective, METH_VARARGS, ""},
   {"image_box_filter_naive", py_image_box_filter_naive, METH_VARARGS, ""},
   {"image_box_filter_separable", py_image_box_filter_separable, METH_VARARGS, ""},
+  {"image_box_filter_separable_ma", py_image_box_filter_separable_ma, METH_VARARGS, ""},
   {NULL, NULL, 0, NULL},
 };
 

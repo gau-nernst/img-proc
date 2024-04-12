@@ -224,15 +224,11 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
   }
 }
 
+// each output element reads kw x kh block of input and average the values independently
 void image_box_filter_naive(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output) {
   int rw = kw / 2;
   int rh = kh / 2;
 
-  // implementations:
-  // - naive                             O(width x height x kw x kh) -> no extra memory
-  // - integral image                    O(width x height)           -> will overflow, extra memory (height x width x depth)
-  // - separable conv                    O(width x kw + height x kh) -> extra memory (kh x width x depth)
-  // - separable + online moving average O(width x height)           -> extra memory (kh x width x depth)
   for (int dst_row = 0; dst_row < height; dst_row++) {
     int row_start = MAX(dst_row - rh, 0);
     int row_end = MIN(dst_row + rh + 1, height);
@@ -256,6 +252,7 @@ void image_box_filter_naive(const uint8_t *image, int width, int height, int dep
   }
 }
 
+// 1D box filter in each direction
 void image_box_filter_separable(const uint8_t *image, int width, int height, int depth, int kw, int kh,
                                 uint8_t *output) {
   int rw = kw / 2;
@@ -298,6 +295,75 @@ void image_box_filter_separable(const uint8_t *image, int width, int height, int
         int count = row_end - row_start;
         double value_f64 = value / (double)count;
         output[(dst_row * width + col) * depth + d] = (uint8_t)round(value_f64);
+      }
+    }
+  }
+
+  free(temp);
+}
+
+// use online moving average algorithm
+void image_box_filter_separable_ma(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                   uint8_t *output) {
+  int rw = kw / 2;
+  int rh = kh / 2;
+
+  // store temp in double-precision -> better accuracy, but more memory usage
+  double *temp = malloc(width * height * depth * sizeof(double));
+  if (temp == NULL)
+    return;
+
+  // per row
+  // NOTE: might not work when kw > width
+  // NOTE: d is not the innermost loop -> strided memory access
+  for (int row = 0; row < height; row++) {
+    for (int d = 0; d < depth; d++) {
+      // initialize with sum from [0, rw-1] inclusive
+      int running_sum = 0;
+      int count = rw;
+      for (int col = 0; col < rw; col++)
+        running_sum += image[(row * width + col) * depth + d];
+
+      // first element = sum from [0, rw] inclusive
+      // TODO: unrool loop?
+      for (int col = 0; col < width; col++) {
+        if (col - rw - 1 >= 0) {
+          running_sum -= image[(row * width + col - rw - 1) * depth + d];
+          count -= 1;
+        }
+        if (col + rw < width) {
+          running_sum += image[(row * width + col + rw) * depth + d];
+          count += 1;
+        }
+
+        double value_f64 = (double)running_sum / (double)count;
+        temp[(row * width + col) * depth + d] = value_f64;
+      }
+    }
+  }
+
+  // per column
+  for (int col = 0; col < width; col++) {
+    for (int d = 0; d < depth; d++) {
+      // initialize with sum from [0, rh-1] inclusive
+      double running_sum = 0;
+      int count = rh;
+      for (int row = 0; row < rh; row++)
+        running_sum += temp[(row * width + col) * depth + d];
+
+      // first element = sum from [0, rh] inclusive
+      for (int row = 0; row < height; row++) {
+        if (row - rh - 1 >= 0) {
+          running_sum -= temp[((row - rh - 1) * width + col) * depth + d];
+          count -= 1;
+        }
+        if (row + rh < height) {
+          running_sum += temp[((row + rh) * width + col) * depth + d];
+          count += 1;
+        }
+
+        double value_f64 = running_sum / (double)count;
+        output[(row * width + col) * depth + d] = (uint8_t)round(value_f64);
       }
     }
   }

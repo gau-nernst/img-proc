@@ -20,3 +20,5 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
 void image_box_filter_naive(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output);
 void image_box_filter_separable(const uint8_t *image, int width, int height, int depth, int kw, int kh,
                                 uint8_t *output);
+void image_box_filter_separable_ma(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                   uint8_t *output);
