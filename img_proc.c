@@ -1,5 +1,6 @@
 #include "img_proc.h"
 #include <math.h>
+#include <stdlib.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -223,32 +224,162 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
   }
 }
 
-void image_box_filter(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output) {
+// each output element reads kw x kh block of input and average the values independently
+static void image_box_filter_naive(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                   uint8_t *output) {
   int rw = kw / 2;
   int rh = kh / 2;
 
-  // implementations:
-  // - naive                             O(width x height x kw x kh) -> no extra memory
-  // - integral image                    O(width x height)           -> will overflow, extra memory (height x width x depth)
-  // - separable conv                    O(width x kw + height x kh) -> extra memory (kh x width x depth)
-  // - separable + online moving average O(width x height)           -> extra memory (kh x width x depth)
   for (int dst_row = 0; dst_row < height; dst_row++) {
+    int row_start = MAX(dst_row - rh, 0);
+    int row_end = MIN(dst_row + rh + 1, height);
+
     for (int dst_col = 0; dst_col < width; dst_col++) {
+      int col_start = MAX(dst_col - rw, 0);
+      int col_end = MIN(dst_col + rw + 1, width);
+
       for (int d = 0; d < depth; d++) {
-        // border handling: normalize over visible area only
         int value = 0;
-        int count = 0;
-
-        for (int src_row = MAX(dst_row - rh, 0); src_row < MIN(dst_row + rh + 1, height - 1); src_row++) {
-          for (int src_col = MAX(dst_col - rw, 0); src_col < MIN(dst_col + rw + 1, width - 1); src_col++) {
-            count += 1;
+        for (int src_row = row_start; src_row < row_end; src_row++)
+          for (int src_col = col_start; src_col < col_end; src_col++)
             value += image[(src_row * width + src_col) * depth + d];
-          }
-        }
 
+        // border handling: normalize over visible area only (like Pillow)
+        int count = (row_end - row_start) * (col_end - col_start);
         double value_f64 = (double)value / (double)count;
-        output[(dst_row * width + dst_col) * depth + d] = (uint8_t)value_f64;
+        output[(dst_row * width + dst_col) * depth + d] = (uint8_t)round(value_f64);
       }
     }
+  }
+}
+
+// 1D box filter in each direction
+static void image_box_filter_separable(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                       uint8_t *output) {
+  int rw = kw / 2;
+  int rh = kh / 2;
+
+  // store temp in double-precision -> better accuracy, but more memory usage
+  double *temp = malloc(width * height * depth * sizeof(double));
+  if (temp == NULL)
+    return;
+
+  // per row
+  for (int row = 0; row < height; row++) {
+    for (int dst_col = 0; dst_col < width; dst_col++) {
+      int col_start = MAX(dst_col - rw, 0);
+      int col_end = MIN(dst_col + rw + 1, width);
+
+      for (int d = 0; d < depth; d++) {
+        int value = 0;
+        for (int src_col = col_start; src_col < col_end; src_col++)
+          value += image[(row * width + src_col) * depth + d];
+
+        int count = col_end - col_start;
+        double value_f64 = (double)value / (double)count;
+        temp[(row * width + dst_col) * depth + d] = value_f64;
+      }
+    }
+  }
+
+  // per column
+  for (int col = 0; col < width; col++) {
+    for (int dst_row = 0; dst_row < height; dst_row++) {
+      int row_start = MAX(dst_row - rh, 0);
+      int row_end = MIN(dst_row + rh + 1, height);
+
+      for (int d = 0; d < depth; d++) {
+        double value = 0;
+        for (int src_row = row_start; src_row < row_end; src_row++)
+          value += temp[(src_row * width + col) * depth + d];
+
+        int count = row_end - row_start;
+        double value_f64 = value / (double)count;
+        output[(dst_row * width + col) * depth + d] = (uint8_t)round(value_f64);
+      }
+    }
+  }
+
+  free(temp);
+}
+
+// use online moving average algorithm
+static void image_box_filter_separable_ma(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+                                          uint8_t *output) {
+  int rw = kw / 2;
+  int rh = kh / 2;
+
+  // store temp in double-precision -> better accuracy, but more memory usage
+  double *temp = malloc(width * height * depth * sizeof(double));
+  if (temp == NULL)
+    return;
+
+  // per row
+  // NOTE: might not work when kw > width
+  // NOTE: d is not the innermost loop -> strided memory access -> tiling
+  for (int row = 0; row < height; row++) {
+    for (int d = 0; d < depth; d++) {
+      // initialize with sum from [0, rw-1] inclusive
+      int running_sum = 0;
+      int count = rw;
+      for (int col = 0; col < rw; col++)
+        running_sum += image[(row * width + col) * depth + d];
+
+      // first element = sum from [0, rw] inclusive
+      // TODO: unrool loop?
+      for (int col = 0; col < width; col++) {
+        if (col - rw - 1 >= 0) {
+          running_sum -= image[(row * width + col - rw - 1) * depth + d];
+          count -= 1;
+        }
+        if (col + rw < width) {
+          running_sum += image[(row * width + col + rw) * depth + d];
+          count += 1;
+        }
+
+        double value_f64 = (double)running_sum / (double)count;
+        temp[(row * width + col) * depth + d] = value_f64;
+      }
+    }
+  }
+
+  // per column
+  for (int col = 0; col < width; col++) {
+    for (int d = 0; d < depth; d++) {
+      // initialize with sum from [0, rh-1] inclusive
+      double running_sum = 0;
+      int count = rh;
+      for (int row = 0; row < rh; row++)
+        running_sum += temp[(row * width + col) * depth + d];
+
+      // first element = sum from [0, rh] inclusive
+      for (int row = 0; row < height; row++) {
+        if (row - rh - 1 >= 0) {
+          running_sum -= temp[((row - rh - 1) * width + col) * depth + d];
+          count -= 1;
+        }
+        if (row + rh < height) {
+          running_sum += temp[((row + rh) * width + col) * depth + d];
+          count += 1;
+        }
+
+        double value_f64 = running_sum / (double)count;
+        output[(row * width + col) * depth + d] = (uint8_t)round(value_f64);
+      }
+    }
+  }
+
+  free(temp);
+}
+
+void image_box_filter(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output,
+                      int impl) {
+  switch (impl) {
+  case 0:
+    return image_box_filter_naive(image, width, height, depth, kw, kh, output);
+  case 1:
+    return image_box_filter_separable(image, width, height, depth, kw, kh, output);
+  case 2:
+    return image_box_filter_separable_ma(image, width, height, depth, kw, kh, output);
   }
 }

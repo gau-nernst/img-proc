@@ -144,12 +144,13 @@ static PyObject *py_image_box_filter(PyObject *self, PyObject *args) {
   int kw;
   int kh;
   Py_buffer output;
+  int impl;
 
-  if (!PyArg_ParseTuple(args, "y#iiiiiy*", &image, &image_size, &width, &height, &depth, &kw, &kh, &output))
+  if (!PyArg_ParseTuple(args, "y#iiiiiy*i", &image, &image_size, &width, &height, &depth, &kw, &kh, &output, &impl))
     return NULL;
 
   Py_BEGIN_ALLOW_THREADS;
-  image_box_filter(image, width, height, depth, kw, kh, output.buf);
+  image_box_filter(image, width, height, depth, kw, kh, output.buf, impl);
   Py_END_ALLOW_THREADS;
 
   PyBuffer_Release(&output);
