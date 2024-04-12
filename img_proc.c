@@ -237,16 +237,17 @@ void image_box_filter_naive(const uint8_t *image, int width, int height, int dep
     for (int dst_col = 0; dst_col < width; dst_col++) {
       for (int d = 0; d < depth; d++) {
         // border handling: normalize over visible area only
+        int row_start = MAX(dst_row - rh, 0);
+        int row_end = MIN(dst_row + rh + 1, height);
+        int col_start = MAX(dst_col - rw, 0);
+        int col_end = MIN(dst_col + rw + 1, width);
+
         int value = 0;
-        int count = 0;
-
-        for (int src_row = MAX(dst_row - rh, 0); src_row < MIN(dst_row + rh + 1, height); src_row++) {
-          for (int src_col = MAX(dst_col - rw, 0); src_col < MIN(dst_col + rw + 1, width); src_col++) {
-            count += 1;
+        for (int src_row = row_start; src_row < row_end; src_row++)
+          for (int src_col = col_start; src_col < col_end; src_col++)
             value += image[(src_row * width + src_col) * depth + d];
-          }
-        }
 
+        int count = (row_end - row_start) * (col_end - col_start);
         double value_f64 = (double)value / (double)count;
         output[(dst_row * width + dst_col) * depth + d] = (uint8_t)round(value_f64);
       }
@@ -269,14 +270,14 @@ void image_box_filter_separable(const uint8_t *image, int width, int height, int
     for (int dst_col = 0; dst_col < width; dst_col++) {
       for (int d = 0; d < depth; d++) {
         // border handling: normalize over visible area only
+        int col_start = MAX(dst_col - rw, 0);
+        int col_end = MIN(dst_col + rw + 1, width);
+
         int value = 0;
-        int count = 0;
-
-        for (int src_col = MAX(dst_col - rw, 0); src_col < MIN(dst_col + rw + 1, width); src_col++) {
-          count += 1;
+        for (int src_col = col_start; src_col < col_end; src_col++)
           value += image[(row * width + src_col) * depth + d];
-        }
 
+        int count = col_end - col_start;
         double value_f64 = (double)value / (double)count;
         temp[(row * width + dst_col) * depth + d] = value_f64;
       }
@@ -288,14 +289,14 @@ void image_box_filter_separable(const uint8_t *image, int width, int height, int
     for (int dst_row = 0; dst_row < height; dst_row++) {
       for (int d = 0; d < depth; d++) {
         // border handling: normalize over visible area only
+        int row_start = MAX(dst_row - rh, 0);
+        int row_end = MIN(dst_row + rh + 1, height);
+
         double value = 0;
-        int count = 0;
-
-        for (int src_row = MAX(dst_row - rh, 0); src_row < MIN(dst_row + rh + 1, height); src_row++) {
-          count += 1;
+        for (int src_row = row_start; src_row < row_end; src_row++)
           value += temp[(src_row * width + col) * depth + d];
-        }
 
+        int count = row_end - row_start;
         double value_f64 = value / (double)count;
         output[(dst_row * width + col) * depth + d] = (uint8_t)round(value_f64);
       }
