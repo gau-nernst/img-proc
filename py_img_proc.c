@@ -8,17 +8,17 @@ static PyObject *py_image_resize(PyObject *self, PyObject *args) {
   Py_ssize_t image_size;
   int width;
   int height;
-  int depth;
+  int channels;
   int new_width;
   int new_height;
   int interpolation;
   Py_buffer output;
 
-  if (!PyArg_ParseTuple(args, "y#iiiiiiy*", &image, &image_size, &width, &height, &depth, &new_width, &new_height, &interpolation, &output))
+  if (!PyArg_ParseTuple(args, "y#iiiiiiy*", &image, &image_size, &width, &height, &channels, &new_width, &new_height, &interpolation, &output))
     return NULL;
 
   Py_BEGIN_ALLOW_THREADS;
-  image_resize(image, width, height, depth, new_width, new_height, interpolation, output.buf);
+  image_resize(image, width, height, channels, new_width, new_height, interpolation, output.buf);
   Py_END_ALLOW_THREADS;
 
   PyBuffer_Release(&output);
@@ -70,7 +70,7 @@ static PyObject *py_image_warp_affine(PyObject *self, PyObject *args) {
   Py_ssize_t src_size;
   int width;
   int height;
-  int depth;
+  int channels;
   const char * transform;
   Py_ssize_t transform_size;
   int new_width;
@@ -78,11 +78,11 @@ static PyObject *py_image_warp_affine(PyObject *self, PyObject *args) {
   int interpolation;
   Py_buffer dst;
 
-  if (!PyArg_ParseTuple(args, "y#iiiy#iiiy*", &src, &src_size, &width, &height, &depth, &transform, &transform_size, &new_width, &new_height, &interpolation, &dst))
+  if (!PyArg_ParseTuple(args, "y#iiiy#iiiy*", &src, &src_size, &width, &height, &channels, &transform, &transform_size, &new_width, &new_height, &interpolation, &dst))
     return NULL;
 
   Py_BEGIN_ALLOW_THREADS;
-  image_warp_affine(src, width, height, depth, transform, new_width, new_height, interpolation, dst.buf);
+  image_warp_affine(src, width, height, channels, transform, new_width, new_height, interpolation, dst.buf);
   Py_END_ALLOW_THREADS;
 
   PyBuffer_Release(&dst);
@@ -114,7 +114,7 @@ static PyObject *py_image_warp_perspective(PyObject *self, PyObject *args) {
   Py_ssize_t src_size;
   int width;
   int height;
-  int depth;
+  int channels;
   const char * transform;
   Py_ssize_t transform_size;
   int new_width;
@@ -122,11 +122,11 @@ static PyObject *py_image_warp_perspective(PyObject *self, PyObject *args) {
   int interpolation;
   Py_buffer dst;
 
-  if (!PyArg_ParseTuple(args, "y#iiiy#iiiy*", &src, &src_size, &width, &height, &depth, &transform, &transform_size, &new_width, &new_height, &interpolation, &dst))
+  if (!PyArg_ParseTuple(args, "y#iiiy#iiiy*", &src, &src_size, &width, &height, &channels, &transform, &transform_size, &new_width, &new_height, &interpolation, &dst))
     return NULL;
 
   Py_BEGIN_ALLOW_THREADS;
-  image_warp_perspective(src, width, height, depth, transform, new_width, new_height, interpolation, dst.buf);
+  image_warp_perspective(src, width, height, channels, transform, new_width, new_height, interpolation, dst.buf);
   Py_END_ALLOW_THREADS;
 
   PyBuffer_Release(&dst);
@@ -140,17 +140,17 @@ static PyObject *py_image_box_filter(PyObject *self, PyObject *args) {
   Py_ssize_t image_size;
   int width;
   int height;
-  int depth;
-  int kw;
-  int kh;
+  int channels;
+  int kx;
+  int ky;
   Py_buffer output;
   int impl;
 
-  if (!PyArg_ParseTuple(args, "y#iiiiiy*i", &image, &image_size, &width, &height, &depth, &kw, &kh, &output, &impl))
+  if (!PyArg_ParseTuple(args, "y#iiiiiy*i", &image, &image_size, &width, &height, &channels, &kx, &ky, &output, &impl))
     return NULL;
 
   Py_BEGIN_ALLOW_THREADS;
-  image_box_filter(image, width, height, depth, kw, kh, output.buf, impl);
+  image_box_filter(image, width, height, channels, kx, ky, output.buf, impl);
   Py_END_ALLOW_THREADS;
 
   PyBuffer_Release(&output);

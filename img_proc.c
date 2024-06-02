@@ -28,6 +28,15 @@ static uint8_t image_value(const uint8_t *image, int width, int height, int dept
 static int round_half_down(float x) { return (int)ceil(x - 0.5); }
 static int round_half_up(float x) { return (int)floor(x + 0.5); }
 
+// will not work if idx > size
+static int reflect_index(int idx, int size) {
+  if (idx < 0)
+    idx = -idx;
+  else if (idx >= size)
+    idx = size - 1 - (idx - (size - 1));
+  return idx;
+}
+
 static void image_interpolate_nearest(const uint8_t *image, int width, int height, int depth, float x, float y,
                                       uint8_t *output, BorderMode mode) {
   int col = round_half_down(x - 0.5);
@@ -225,77 +234,60 @@ void image_warp_perspective(const uint8_t *src, int width, int height, int depth
 }
 
 // each output element reads kw x kh block of input and average the values independently
-static void image_box_filter_naive(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+static void image_box_filter_naive(const uint8_t *image, int width, int height, int channels, int kx, int ky,
                                    uint8_t *output) {
-  int rw = kw / 2;
-  int rh = kh / 2;
+  int rw = kx / 2;
+  int rh = ky / 2;
+  int norm = kx * ky;
 
-  for (int dst_row = 0; dst_row < height; dst_row++) {
-    int row_start = MAX(dst_row - rh, 0);
-    int row_end = MIN(dst_row + rh + 1, height);
-
-    for (int dst_col = 0; dst_col < width; dst_col++) {
-      int col_start = MAX(dst_col - rw, 0);
-      int col_end = MIN(dst_col + rw + 1, width);
-
-      for (int d = 0; d < depth; d++) {
+  for (int out_row = 0; out_row < height; out_row++) {
+    for (int out_col = 0; out_col < width; out_col++) {
+      for (int c = 0; c < channels; c++) {
         int sum = 0;
-        for (int src_row = row_start; src_row < row_end; src_row++)
-          for (int src_col = col_start; src_col < col_end; src_col++)
-            sum += image[(src_row * width + src_col) * depth + d];
+        for (int in_row = out_row - rh; in_row < out_row + rh + 1; in_row++)
+          for (int in_col = out_col - rw; in_col < out_col + rw + 1; in_col++)
+            sum += image[(reflect_index(in_row, height) * width + reflect_index(in_col, width)) * channels + c];
 
-        // border handling: normalize over visible area only (like Pillow)
-        int count = (row_end - row_start) * (col_end - col_start);
-        output[(dst_row * width + dst_col) * depth + d] = (sum + count / 2) / count;
+        // positive integer division with rounding
+        output[(out_row * width + out_col) * channels + c] = (sum + norm / 2) / norm;
       }
     }
   }
 }
 
 // 1D box filter in each direction
-static void image_box_filter_separable(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+static void image_box_filter_separable(const uint8_t *image, int width, int height, int channels, int kx, int ky,
                                        uint8_t *output) {
-  int rw = kw / 2;
-  int rh = kh / 2;
+  int rx = kx / 2;
+  int ry = ky / 2;
+  int norm = kx * ky;
 
-  // store temp in float-precision -> better accuracy, but more memory usage
-  // NOTE: we can accumulate in int, and normalize final result
-  float *temp = malloc(width * height * depth * sizeof(float));
+  int *temp = malloc(width * height * channels * sizeof(int));
   if (temp == NULL)
     return;
 
   // per row
   for (int row = 0; row < height; row++) {
-    for (int dst_col = 0; dst_col < width; dst_col++) {
-      int col_start = MAX(dst_col - rw, 0);
-      int col_end = MIN(dst_col + rw + 1, width);
-
-      for (int d = 0; d < depth; d++) {
+    for (int out_col = 0; out_col < width; out_col++) {
+      for (int c = 0; c < channels; c++) {
         int value = 0;
-        for (int src_col = col_start; src_col < col_end; src_col++)
-          value += image[(row * width + src_col) * depth + d];
-
-        int count = col_end - col_start;
-        float value_float = (float)value / (float)count;
-        temp[(row * width + dst_col) * depth + d] = value_float;
+        for (int in_col = out_col - rx; in_col < out_col + rx + 1; in_col++)
+          value += image[(row * width + reflect_index(in_col, width)) * channels + c];
+        temp[(row * width + out_col) * channels + c] = value;
       }
     }
   }
 
   // per column
   for (int col = 0; col < width; col++) {
-    for (int dst_row = 0; dst_row < height; dst_row++) {
-      int row_start = MAX(dst_row - rh, 0);
-      int row_end = MIN(dst_row + rh + 1, height);
-
-      for (int d = 0; d < depth; d++) {
+    for (int out_row = 0; out_row < height; out_row++) {
+      for (int d = 0; d < channels; d++) {
         float value = 0;
-        for (int src_row = row_start; src_row < row_end; src_row++)
-          value += temp[(src_row * width + col) * depth + d];
+        for (int in_row = out_row - ry; in_row < out_row + ry + 1; in_row++)
+          value += temp[(reflect_index(in_row, height) * width + col) * channels + d];
 
-        int count = row_end - row_start;
-        float value_float = value / (float)count;
-        output[(dst_row * width + col) * depth + d] = (uint8_t)round(value_float);
+        // positive integer division with rounding
+        output[(out_row * width + col) * channels + d] = (value + norm / 2) / norm;
       }
     }
   }
@@ -304,68 +296,97 @@ static void image_box_filter_separable(const uint8_t *image, int width, int heig
 }
 
 // use online moving average algorithm
-static void image_box_filter_separable_ma(const uint8_t *image, int width, int height, int depth, int kw, int kh,
+static void image_box_filter_separable_ma(const uint8_t *image, int width, int height, int channels, int kx, int ky,
                                           uint8_t *output) {
-  int rw = kw / 2;
-  int rh = kh / 2;
+  int rx = kx / 2;
+  int ry = ky / 2;
+  int norm = kx * ky;
 
-  // store temp in float-precision -> better accuracy, but more memory usage
-  // NOTE: we can accumulate in int, and normalize final result
-  float *temp = malloc(width * height * depth * sizeof(float));
+  int *temp = malloc(width * height * channels * sizeof(int));
   if (temp == NULL)
     return;
 
   // per row
-  // NOTE: might not work when kw > width
-  // NOTE: d is not the innermost loop -> strided memory access -> tiling
   for (int row = 0; row < height; row++) {
-    for (int d = 0; d < depth; d++) {
-      // initialize with sum from [0, rw-1] inclusive
-      int running_sum = 0;
-      int count = rw;
-      for (int col = 0; col < rw; col++)
-        running_sum += image[(row * width + col) * depth + d];
+    for (int c = 0; c < channels; c++) {
+      // section 1
+      //    [------image------]
+      // [kernel]
+      // initialize running sum with sum([-rx, rx-1]) inclusive
+      // which is equal to [0] + 2 * sum([1, rx-1]) + [rx]
+      int running_sum = image[(row * width + 0) * channels + c] + image[(row * width + rx) * channels + c];
+      for (int col = 1; col < rx; col++)
+        running_sum += image[(row * width + col) * channels + c] * 2;
 
-      // first element = sum from [0, rw] inclusive
-      // TODO: unrool loop?
-      for (int col = 0; col < width; col++) {
-        if (col - rw - 1 >= 0) {
-          running_sum -= image[(row * width + col - rw - 1) * depth + d];
-          count -= 1;
-        }
-        if (col + rw < width) {
-          running_sum += image[(row * width + col + rw) * depth + d];
-          count += 1;
-        }
+      for (int col = 0; col < rx; col++) {
+        running_sum += image[(row * width + col + rx) * channels + c];
+        temp[(row * width + col) * channels + c] = running_sum;
 
-        float value_float = (float)running_sum / (float)count;
-        temp[(row * width + col) * depth + d] = value_float;
+        int left_col = rx - col; // reflection from (col - rx)
+        running_sum -= image[(row * width + left_col) * channels + c];
+      }
+
+      // section 2
+      // [------image------]
+      //   [kernel]
+      for (int col = rx; col < width - rx; col++) {
+        running_sum += image[(row * width + col + rx) * channels + c];
+        temp[(row * width + col) * channels + c] = running_sum;
+        running_sum -= image[(row * width + col - rx) * channels + c];
+      }
+
+      // section 3
+      // [------image------]
+      //               [kernel]
+      for (int col = width - rx; col < width; col++) {
+        int right_col = width - 1 - (col + rx - (width - 1)); // reflection from (col + rx)
+        running_sum += image[(row * width + right_col) * channels + c];
+
+        temp[(row * width + col) * channels + c] = running_sum;
+        running_sum -= image[(row * width + col - rx) * channels + c];
       }
     }
   }
 
   // per column
   for (int col = 0; col < width; col++) {
-    for (int d = 0; d < depth; d++) {
-      // initialize with sum from [0, rh-1] inclusive
-      float running_sum = 0;
-      int count = rh;
-      for (int row = 0; row < rh; row++)
-        running_sum += temp[(row * width + col) * depth + d];
+    for (int c = 0; c < channels; c++) {
+      // section 1
+      //    [------image------]
+      // [kernel]
+      // initialize running sum with sum([-ry, ry-1]) inclusive
+      // which is equal to [0] + 2 * sum([1, ry-1]) + [ry]
+      int running_sum = temp[(0 * width + col) * channels + c] + temp[(ry * width + col) * channels + c];
+      for (int row = 1; row < ry; row++)
+        running_sum += temp[(row * width + col) * channels + c] * 2;
 
-      // first element = sum from [0, rh] inclusive
-      for (int row = 0; row < height; row++) {
-        if (row - rh - 1 >= 0) {
-          running_sum -= temp[((row - rh - 1) * width + col) * depth + d];
-          count -= 1;
-        }
-        if (row + rh < height) {
-          running_sum += temp[((row + rh) * width + col) * depth + d];
-          count += 1;
-        }
+      for (int row = 0; row < ry; row++) {
+        running_sum += temp[((row + ry) * width + col) * channels + c];
+        output[(row * width + col) * channels + c] = (running_sum + norm / 2) / norm;
 
-        float value_float = running_sum / (float)count;
-        output[(row * width + col) * depth + d] = (uint8_t)round(value_float);
+        int top_row = ry - row; // reflection from (row - ry)
+        running_sum -= temp[(top_row * width + col) * channels + c];
+      }
+
+      // section 2
+      // [------image------]
+      //   [kernel]
+      for (int row = ry; row < height - ry; row++) {
+        running_sum += temp[((row + ry) * width + col) * channels + c];
+        output[(row * width + col) * channels + c] = (running_sum + norm / 2) / norm;
+        running_sum -= temp[((row - ry) * width + col) * channels + c];
+      }
+
+      // section 3
+      // [------image------]
+      //               [kernel]
+      for (int row = height - ry; row < height; row++) {
+        int bottom_row = height - 1 - (row + ry - (height - 1)); // reflection from (row + ry)
+        running_sum += temp[(bottom_row * width + col) * channels + c];
+
+        // positive integer division with rounding
+        output[(row * width + col) * channels + c] = (running_sum + norm / 2) / norm;
+        running_sum -= temp[((row - ry) * width + col) * channels + c];
       }
     }
   }
@@ -373,15 +394,15 @@ static void image_box_filter_separable_ma(const uint8_t *image, int width, int h
   free(temp);
 }
 
-void image_box_filter(const uint8_t *image, int width, int height, int depth, int kw, int kh, uint8_t *output,
+void image_box_filter(const uint8_t *image, int width, int height, int channels, int kx, int ky, uint8_t *output,
                       int impl) {
   switch (impl) {
   case 0:
-    return image_box_filter_naive(image, width, height, depth, kw, kh, output);
+    return image_box_filter_naive(image, width, height, channels, kx, ky, output);
   case 1:
-    return image_box_filter_separable(image, width, height, depth, kw, kh, output);
+    return image_box_filter_separable(image, width, height, channels, kx, ky, output);
   case 2:
-    return image_box_filter_separable_ma(image, width, height, depth, kw, kh, output);
+    return image_box_filter_separable_ma(image, width, height, channels, kx, ky, output);
   }
 }
 
@@ -424,14 +445,7 @@ static void image_gaussian_filter_naive(const uint8_t *image, int width, int hei
       for (int depth = 0; depth < channels; depth++) {
         float val = 0.0f;
         for (int i = 0; i < kx; i++) {
-          int in_col = out_col - kx / 2 + i;
-
-          // reflection. will not work if kernel size > image size
-          if (in_col < 0)
-            in_col = -in_col;
-          else if (in_col >= width)
-            in_col = width - 1 - (in_col - (width - 1));
-
+          int in_col = reflect_index(out_col - kx / 2 + i, width);
           val += (float)image[(row * width + in_col) * channels + depth] * kernel_x[i];
         }
         temp[(row * width + out_col) * channels + depth] = val;
@@ -448,14 +462,7 @@ static void image_gaussian_filter_naive(const uint8_t *image, int width, int hei
       for (int depth = 0; depth < channels; depth++) {
         float val = 0.0f;
         for (int i = 0; i < ky; i++) {
-          int in_row = out_row - ky / 2 + i;
-
-          // reflection. will not work if kernel size > image size
-          if (in_row < 0)
-            in_row = -in_row;
-          else if (in_row >= height)
-            in_row = height - 1 - (in_row - (height - 1));
-
+          int in_row = reflect_index(out_row - ky / 2 + i, height);
           val += temp[(in_row * width + col) * channels + depth] * kernel_y[i];
         }
         output[(out_row * width + col) * channels + depth] = (uint8_t)round(val);
