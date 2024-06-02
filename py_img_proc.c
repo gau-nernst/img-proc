@@ -28,13 +28,13 @@ static PyObject *py_image_resize(PyObject *self, PyObject *args) {
 }
 
 static PyObject *py_get_rotation_matrix_2d(PyObject *self, PyObject *args) {
-  double cx;
-  double cy;
-  double angle;
-  double scale;
+  float cx;
+  float cy;
+  float angle;
+  float scale;
   Py_buffer output;
 
-  if (!PyArg_ParseTuple(args, "ddddy*", &cx, &cy, &angle, &scale, &output))
+  if (!PyArg_ParseTuple(args, "ffffy*", &cx, &cy, &angle, &scale, &output))
     return NULL;
 
   Py_BEGIN_ALLOW_THREADS;
@@ -159,6 +159,31 @@ static PyObject *py_image_box_filter(PyObject *self, PyObject *args) {
   return Py_None;
 }
 
+static PyObject *py_image_gaussian_filter(PyObject *self, PyObject *args) {
+  const char * image;
+  Py_ssize_t image_size;
+  int width;
+  int height;
+  int channels;
+  int kx;
+  int ky;
+  float sigma_x;
+  float sigma_y;
+  Py_buffer output;
+
+  if (!PyArg_ParseTuple(args, "y#iiiiiffy*", &image, &image_size, &width, &height, &channels, &kx, &ky, &sigma_x, &sigma_y, &output))
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS;
+  image_gaussian_filter(image, width, height, channels, kx, ky, sigma_x, sigma_y, output.buf);
+  Py_END_ALLOW_THREADS;
+
+  PyBuffer_Release(&output);
+
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
 static PyMethodDef ImgProcMethods[] = {
   {"image_resize", py_image_resize, METH_VARARGS, ""},
   {"get_rotation_matrix_2d", py_get_rotation_matrix_2d, METH_VARARGS, ""},
@@ -167,6 +192,7 @@ static PyMethodDef ImgProcMethods[] = {
   {"invert_matrix_3x3", py_invert_matrix_3x3, METH_VARARGS, ""},
   {"image_warp_perspective", py_image_warp_perspective, METH_VARARGS, ""},
   {"image_box_filter", py_image_box_filter, METH_VARARGS, ""},
+  {"image_gaussian_filter", py_image_gaussian_filter, METH_VARARGS, ""},
   {NULL, NULL, 0, NULL},
 };
 

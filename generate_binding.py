@@ -75,7 +75,7 @@ def generate_py_func(func_name: str, func_args: list[tuple[str, str]], enums: di
             c_func_args.append(arg_name)
 
         else:
-            raise ValueError(f"Unsupported {arg_type=} for {arg_name=}")
+            raise ValueError(f"{func_name} - Unsupported {arg_type=} for {arg_name=}")
 
         arg_parse_pattern += arg_pattern_lookup[arg_type]
 
