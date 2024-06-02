@@ -425,8 +425,14 @@ static void image_gaussian_filter_naive(const uint8_t *image, int width, int hei
         float val = 0.0f;
         for (int i = 0; i < kx; i++) {
           int in_col = out_col - kx / 2 + i;
-          if (in_col >= 0 && in_col < width)
-            val += (float)image[(row * width + in_col) * channels + depth] * kernel_x[i];
+
+          // reflection. will not work if kernel size > image size
+          if (in_col < 0)
+            in_col = -in_col;
+          else if (in_col >= width)
+            in_col = width - 1 - (in_col - (width - 1));
+
+          val += (float)image[(row * width + in_col) * channels + depth] * kernel_x[i];
         }
         temp[(row * width + out_col) * channels + depth] = val;
       }
@@ -443,8 +449,14 @@ static void image_gaussian_filter_naive(const uint8_t *image, int width, int hei
         float val = 0.0f;
         for (int i = 0; i < ky; i++) {
           int in_row = out_row - ky / 2 + i;
-          if (in_row >= 0 && in_row < height)
-            val += temp[(in_row * width + col) * channels + depth] * kernel_y[i];
+
+          // reflection. will not work if kernel size > image size
+          if (in_row < 0)
+            in_row = -in_row;
+          else if (in_row >= height)
+            in_row = height - 1 - (in_row - (height - 1));
+
+          val += temp[(in_row * width + col) * channels + depth] * kernel_y[i];
         }
         output[(out_row * width + col) * channels + depth] = (uint8_t)round(val);
       }
